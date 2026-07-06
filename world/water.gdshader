@@ -60,6 +60,11 @@ void fragment() {
 		float glint = smoothstep(0.75, 0.95, n + 0.15 * sin(wp * TAU + UV.x * 8.0));
 		vec3 col = mix(tint.rgb * 0.85, tint.rgb * 1.15, n);
 		col = mix(col, vec3(1.0), glint * 0.5);
-		COLOR = vec4(col, tint.a);
+		// Soft shoreline: fade alpha near the rect edges (with a little noise so the
+		// bank reads organic, not ruler-cut).
+		float bank = smoothstep(0.0, 0.18, UV.x) * smoothstep(1.0, 0.82, UV.x)
+			* smoothstep(0.0, 0.18, UV.y) * smoothstep(1.0, 0.82, UV.y);
+		bank = clamp(bank * (0.85 + 0.3 * n), 0.0, 1.0);
+		COLOR = vec4(col, tint.a * bank);
 	}
 }

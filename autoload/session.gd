@@ -24,6 +24,14 @@ var auto_cast_buttons: int = 0
 # Headless test hook (--auto-tp): the bot requests waypoint travel every ~2 s
 # and prints every teleport_event, so the whole loop is verifiable headless.
 var auto_tp: bool = false
+# Dev hook (--shot SECONDS, windowed only): N seconds after entering the game,
+# save the viewport to res://shot.png and quit — the in-game screenshot loop
+# for visual verification. 0 = disabled.
+var auto_shot: float = 0.0
+# Dev hook (--tod 0..1): override the DISPLAYED time of day (sky + world tint +
+# glow) for visual testing — 0 dawn, .25 noon, .5 dusk, .75 midnight. Purely
+# cosmetic (the synced clock still runs the sim). -1 = disabled.
+var debug_tod: float = -1.0
 
 const CHARACTER_CFG := "user://character.cfg"
 

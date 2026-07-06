@@ -10,6 +10,7 @@ class_name TestMap extends Node2D
 @onready var _floor: FloorRenderer = $FloorRenderer
 @onready var _water: WaterRenderer = $Water
 @onready var _markers: MapMarkers = $Markers
+@onready var _glow: GlowLayer = $Glow
 @onready var _foliage: Foliage = $Foliage
 
 var _geometry: WorldGeometry
@@ -29,6 +30,7 @@ func _paint() -> void:
 	_floor.setup(_geometry)
 	_water.setup(_geometry)
 	_markers.setup(_geometry)
+	_glow.setup(_geometry)
 	_foliage.setup(_geometry)
 
 ## Forwarders for the synchronized cosmetic phases, fed each frame by client_world
@@ -40,7 +42,19 @@ func set_water_phase(p: float) -> void:
 func set_wind_phase(p: float) -> void:
 	_foliage.set_wind_phase(p)
 
-## Pickup-state forwarder (orb_event → markers): hide a taken orb/cache marker
-## until the server says it respawned.
+## Pickup-state forwarder (orb_event → markers + glow): hide a taken orb/cache
+## marker until the server says it respawned.
 func set_pickup_taken(kind: int, index: int, taken: bool) -> void:
 	_markers.set_pickup_taken(kind, index, taken)
+	_glow.set_pickup_taken(kind, index, taken)
+
+## Night factor (0 = noon, 1 = midnight) from the synced day cycle: the glow
+## layer brightens as the world tint darkens.
+func set_night(f: float) -> void:
+	_glow.set_night(f)
+
+## Re-parent the tree sprites into a y-sorted node shared with the entities so
+## actors sort against trunks (client_root's Playfield). Optional: without it,
+## trees render inside the Foliage layer as before (art_preview path).
+func set_tree_parent(parent: Node2D) -> void:
+	_foliage.set_tree_parent(parent)

@@ -75,6 +75,10 @@ func _start() -> void:
 	Session.auto_cast_buttons = _parse_cast(args.get("cast", ""))
 	# Test hook: request waypoint travel on a loop (headless teleport smoke test).
 	Session.auto_tp = args.has("auto_tp")
+	# Dev hook: in-game screenshot after N seconds (windowed visual verification).
+	Session.auto_shot = maxf(0.0, float(args.get("shot", "0")))
+	# Dev hook: force a displayed time of day (cosmetic only).
+	Session.debug_tod = float(args.get("tod", "-1"))
 	# Load the saved character (default look if none); --class overrides just the
 	# class subfield so headless tests can exercise the appearance sync.
 	Session.load_character()
@@ -194,6 +198,12 @@ func _parse_args() -> Dictionary:
 				i += 1
 				if i < a.size(): out["cast"] = a[i]
 			"--auto-tp": out["auto_tp"] = true
+			"--shot":
+				i += 1
+				if i < a.size(): out["shot"] = a[i]
+			"--tod":
+				i += 1
+				if i < a.size(): out["tod"] = a[i]
 			"--faction":
 				i += 1
 				if i < a.size(): out["faction"] = a[i]

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bdboh2oi2d50w"
-path="res://.godot/imported/monster.png-e0a0bbc750c8f948db8e044cc06d2e5d.ctex"
+uid="uid://7ayd0k8rickg"
+path="res://.godot/imported/fx_glow.png-e131d2eb77ed01e446e7e401da40013f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/monster.png"
-dest_files=["res://.godot/imported/monster.png-e0a0bbc750c8f948db8e044cc06d2e5d.ctex"]
+source_file="res://assets/sprites/fx_glow.png"
+dest_files=["res://.godot/imported/fx_glow.png-e131d2eb77ed01e446e7e401da40013f.ctex"]
 
 [params]
 

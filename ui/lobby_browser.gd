@@ -14,6 +14,7 @@ var _lobbies: Array = []  # cached list of lobby-info dictionaries
 @onready var _status: Label = $VBox/Status
 
 func _ready() -> void:
+	theme = UiTheme.get_theme()
 	_size_opt.add_item("Small (2p)", WorldGenerator.SIZE_SMALL)
 	_size_opt.add_item("Medium (4p)", WorldGenerator.SIZE_MEDIUM)
 	_size_opt.add_item("Large (20p)", WorldGenerator.SIZE_LARGE)

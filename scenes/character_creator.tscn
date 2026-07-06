@@ -34,7 +34,7 @@ layout_mode = 2
 
 [node name="Preview" type="AnimatedSprite2D" parent="CenterContainer/HBox/PreviewBox/PreviewFrame/PreviewAnchor"]
 position = Vector2(80, 100)
-scale = Vector2(6, 6)
+scale = Vector2(4, 4)
 
 [node name="Options" type="VBoxContainer" parent="CenterContainer/HBox"]
 layout_mode = 2

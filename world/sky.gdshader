@@ -58,11 +58,13 @@ void fragment() {
 	float wDay   = wphase(t, 0.25);
 	float wDusk  = wphase(t, 0.5);
 	float wNight = wphase(t, 0.75);
-	vec3 zenith = vec3(0.28, 0.30, 0.55) * wDawn + vec3(0.24, 0.52, 0.90) * wDay
-		+ vec3(0.20, 0.16, 0.42) * wDusk + vec3(0.03, 0.04, 0.12) * wNight;
-	vec3 horizon = vec3(0.98, 0.62, 0.42) * wDawn + vec3(0.70, 0.85, 0.98) * wDay
-		+ vec3(0.96, 0.42, 0.26) * wDusk + vec3(0.09, 0.12, 0.26) * wNight;
+	vec3 zenith = vec3(0.30, 0.32, 0.62) * wDawn + vec3(0.20, 0.48, 0.95) * wDay
+		+ vec3(0.24, 0.18, 0.50) * wDusk + vec3(0.02, 0.03, 0.10) * wNight;
+	vec3 horizon = vec3(1.00, 0.58, 0.35) * wDawn + vec3(0.66, 0.88, 1.00) * wDay
+		+ vec3(1.00, 0.42, 0.30) * wDusk + vec3(0.08, 0.11, 0.24) * wNight;
 	vec3 col = mix(zenith, horizon, smoothstep(0.0, 1.0, UV.y));
+	// Low haze band brightening toward the horizon line.
+	col = mix(col, mix(horizon, vec3(1.0), 0.25), smoothstep(0.55, 0.95, UV.y) * 0.22);
 
 	// Celestial elevation: +1 at noon, 0 at the horizon, -1 at midnight.
 	float h = sin(t * TAU);
@@ -74,7 +76,7 @@ void fragment() {
 
 	// --- stars (night, upper sky) ---
 	vec2 sg = floor(UV * vec2(aspect, 1.0) * 260.0);
-	float star = step(0.992, hash(sg));
+	float star = step(0.990, hash(sg));
 	float tw = 0.6 + 0.4 * sin(hash(sg + 3.1) * TAU + cloud_phase * 40.0);
 	col += vec3(star * tw) * (1.0 - daylight) * smoothstep(0.68, 0.15, UV.y);
 
@@ -83,9 +85,9 @@ void fragment() {
 	float sun_y = horizon_y - h * arc;
 	float sd = length((UV - vec2(sun_x, sun_y)) * vec2(aspect, 1.0));
 	float sun_disk = smoothstep(0.05, 0.035, sd);
-	float sun_glow = pow(max(0.0, 1.0 - sd / 0.55), 3.0);
+	float sun_glow = pow(max(0.0, 1.0 - sd / 0.7), 3.0);
 	vec3 sun_col = mix(vec3(1.0, 0.6, 0.3), vec3(1.0, 0.96, 0.8), smoothstep(0.0, 0.5, h));
-	col += sun_col * (sun_disk + sun_glow * 0.6) * sun_up;
+	col += sun_col * (sun_disk + sun_glow * 0.75) * sun_up;
 
 	// --- moon (opposite arc; a soft crescent) ---
 	float moon_x = fract(t + 0.5) * 2.0;

@@ -11,3 +11,5 @@ const SLAM_RING := 4
 const BOSS_SMASH_RING := 5
 const BOSS_SUMMON_BURST := 6
 const NOVA_RING := 7
+const BOSS_CHARGE_DUST := 8
+const MUZZLE_FLASH := 9

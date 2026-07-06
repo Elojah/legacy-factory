@@ -1,13 +1,14 @@
 class_name CharAnim
-## Layout contract for the baked character sheets (assets/sprites/{player,monster}.png)
-## and helpers to map the sim's analog facing onto a 4-direction animation.
-## Kept in sync with tools/art_baker.gd. Pure functions / consts — no nodes.
+## Helpers to map the sim's analog facing onto a 4-direction animation.
+## The sheet-layout contract is OWNED by client/char_painter.gd (frame size,
+## column tables, fps) — the consts here alias it. Pure functions / consts — no nodes.
 ##
-## Sheet: 16x24 frames, rows = DOWN/UP/SIDE (left = flip_h of SIDE),
-## cols = idle(0-1) walk(2-5) attack(6-9).
+## Sheet: 24x32 frames, rows = DOWN/UP/SIDE (left = flip_h of SIDE),
+## cols = idle(0-1) walk(2-7) attack(8-11).
 
-const FRAME_W := 16
-const FRAME_H := 24
+const CP := preload("res://client/char_painter.gd")
+const FRAME_W := CP.FRAME_W
+const FRAME_H := CP.FRAME_H
 
 # Sheet rows.
 const ROW_DOWN := 0

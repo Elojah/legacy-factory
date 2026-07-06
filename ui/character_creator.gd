@@ -33,6 +33,7 @@ var _faction_idx: int = 0  # 0-based; the wire faction id is _faction_idx + 1
 var _face_idx: int = 0
 
 func _ready() -> void:
+	theme = UiTheme.get_theme()
 	# Start from the saved look so re-editing is incremental.
 	_char_class = Appearance.char_class_of(Session.appearance)
 	_hair_style = Appearance.hair_style_of(Session.appearance)

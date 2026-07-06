@@ -26,6 +26,8 @@ var _shop_in_range: bool = false
 var _travel_in_range: bool = false
 
 func _ready() -> void:
+	# Pixel-font theme on every HUD Control (a CanvasLayer can't inherit one).
+	UiTheme.apply(self)
 	# The panels only emit; requests go straight out (server revalidates).
 	_diplomacy.action_pressed.connect(
 		func(target_faction: int, action: int): NetManager.client_diplomacy_action(target_faction, action))
@@ -77,8 +79,8 @@ func end_cast() -> void:
 func set_ability_state(s: EntityState) -> void:
 	_hotbar.set_ability_state(s)
 
-func set_boss_bar(boss_name: String, hp: int, max_hp: int) -> void:
-	_boss_bar.show_boss(boss_name, hp, max_hp)
+func set_boss_bar(boss_name: String, hp: int, max_hp: int, kit: int = 0) -> void:
+	_boss_bar.show_boss(boss_name, hp, max_hp, kit)
 
 func hide_boss_bar() -> void:
 	_boss_bar.hide_boss()

@@ -17,11 +17,17 @@ const SHADOW_OFFSET := Vector2(20, 34)          # drop-shadow displacement (scal
 const SHADOW_LAYERS := 3                         # stacked translucent rects = fake blur
 const SHADOW_SPREAD := 10.0                      # each layer grows this much more
 const SHADOW_ALPHA := 0.22                       # base alpha of the tightest shadow layer
-const RIM_PX := 10.0                             # rocky cliff band hugging the plateau edge
+const RIM_PX := 12.0                             # rocky cliff band hugging the plateau edge
 const PYRAMID_BANDS := 5                          # rock bands hanging below an island
 const BAND_H := 16.0                             # height of each hanging band (px)
 const BAND_INSET_STEP := 26.0                    # each band narrows this much per side, going down
-const EDGE_COLOR := Color(1.0, 1.0, 1.0, 0.10)   # thin top-lip highlight
+const EDGE_COLOR := Color(1.0, 1.0, 1.0, 0.14)   # thin top-lip highlight
+const RIM_SUN_COLOR := Color(1.0, 1.0, 1.0, 0.18)  # sun-lit band at the very top of the rim
+const AO_COLOR := Color(0.0, 0.0, 0.0, 0.14)     # soft inner ambient-occlusion band
+const AO_PX := 6.0
+# Fixed pseudo-random 4x4 arrangement of the 4 floor variants — kills the visible
+# 2x2 checker while staying deterministic and seamlessly tileable (64x64).
+const FLOOR_MIX: Array[int] = [0, 1, 2, 1, 0, 0, 1, 2, 1, 2, 0, 3, 2, 1, 0, 0]
 
 # Per-biome tint applied to the neutral wood plank tile (subtle, stays wood-coloured).
 const BIOME_TINT: Array[Color] = [
@@ -30,8 +36,9 @@ const BIOME_TINT: Array[Color] = [
 ]
 
 var _geometry: WorldGeometry
-var _floor_tex: Array = []   # biome index -> ImageTexture (32x32 tileable checker)
-var _rim_tex: Array = []     # biome index -> ImageTexture (16x16 cliff face, atlas col 2)
+var _floor_tex: Array = []   # biome index -> ImageTexture (64x64 variant patchwork)
+var _rim_tex: Array = []     # biome index -> ImageTexture (16x16 cliff face, atlas col 4)
+var _edge_tex: Array = []    # biome index -> ImageTexture (16x16 overhang fringe, col 5)
 var _bridge_tex: Texture2D   # shared 16x16 wood-plank tile
 
 func _ready() -> void:
@@ -45,27 +52,24 @@ func _ready() -> void:
 	if _geometry != null:
 		queue_redraw()
 
-## Slice the terrain atlas into one tileable 32x32 checker texture per biome (floor and
-## floor_alt in a 2x2 arrangement — repeats seamlessly, matching the old checkerboard).
+## Compose one tileable 64x64 patchwork texture per biome from the 4 floor variant
+## tiles in the fixed FLOOR_MIX arrangement — varied ground with no visible checker.
 func _build_floor_textures() -> void:
 	var atlas: Image = load("res://assets/tiles/terrain.png").get_image()
 	if atlas.is_compressed():
 		atlas.decompress()
 	atlas.convert(Image.FORMAT_RGBA8)
 	for b in BiomeRegistry.BIOME_COUNT:
-		var fc := BiomeRegistry.floor_coord(b)
-		var ac := BiomeRegistry.floor_alt_coord(b)
-		var floor_r := Rect2i(fc.x * TS, fc.y * TS, TS, TS)
-		var alt_r := Rect2i(ac.x * TS, ac.y * TS, TS, TS)
-		var img := Image.create_empty(TS * 2, TS * 2, false, Image.FORMAT_RGBA8)
-		img.blit_rect(atlas, floor_r, Vector2i(0, 0))
-		img.blit_rect(atlas, alt_r, Vector2i(TS, 0))
-		img.blit_rect(atlas, alt_r, Vector2i(0, TS))
-		img.blit_rect(atlas, floor_r, Vector2i(TS, TS))
+		var img := Image.create_empty(TS * 4, TS * 4, false, Image.FORMAT_RGBA8)
+		for i in FLOOR_MIX.size():
+			var vc := BiomeRegistry.floor_var_coord(b, FLOOR_MIX[i])
+			var cell := Vector2i((i % 4) * TS, (i >> 2) * TS)
+			img.blit_rect(atlas, Rect2i(vc.x * TS, vc.y * TS, TS, TS), cell)
 		_floor_tex.append(ImageTexture.create_from_image(img))
 
 ## Slice the terrain atlas cliff column (BiomeRegistry.wall_coord) into one 16x16
-## tileable rock-face texture per biome, used for island rims / reverse-pyramid bands.
+## tileable rock-face texture per biome (island rims / reverse-pyramid bands), and
+## the edge column into the overhang fringe strip.
 func _build_rim_textures() -> void:
 	var atlas: Image = load("res://assets/tiles/terrain.png").get_image()
 	if atlas.is_compressed():
@@ -76,6 +80,10 @@ func _build_rim_textures() -> void:
 		var img := Image.create_empty(TS, TS, false, Image.FORMAT_RGBA8)
 		img.blit_rect(atlas, Rect2i(cc.x * TS, cc.y * TS, TS, TS), Vector2i(0, 0))
 		_rim_tex.append(ImageTexture.create_from_image(img))
+		var ec := BiomeRegistry.edge_coord(b)
+		var eimg := Image.create_empty(TS, TS, false, Image.FORMAT_RGBA8)
+		eimg.blit_rect(atlas, Rect2i(ec.x * TS, ec.y * TS, TS, TS), Vector2i(0, 0))
+		_edge_tex.append(ImageTexture.create_from_image(eimg))
 
 func setup(geometry: WorldGeometry) -> void:
 	_geometry = geometry
@@ -109,6 +117,8 @@ func _draw_underside(rect: Rect2, biome: int, thin: bool) -> void:
 	var cliff: Texture2D = _rim_tex[clampi(biome, 0, _rim_tex.size() - 1)]
 	# Rocky rim hugging the plateau edge (the floor draws over the interior in pass 2).
 	draw_texture_rect(cliff, rect.grow(RIM_PX), true)
+	# Sun-lit band at the very top of the rim so plateaus pop against the sky.
+	draw_rect(Rect2(rect.position + Vector2(-RIM_PX, -RIM_PX), Vector2(rect.size.x + 2.0 * RIM_PX, 3.0)), RIM_SUN_COLOR, true)
 	if thin:
 		return
 	# Reverse-pyramid rock mass hanging beneath the island: each band is lower and
@@ -124,10 +134,20 @@ func _draw_underside(rect: Rect2, biome: int, thin: bool) -> void:
 		draw_texture_rect(cliff, band, true, Color(shade, shade, shade, 1.0))
 
 func _draw_floor(rect: Rect2, biome: int) -> void:
-	var tex: Texture2D = _floor_tex[clampi(biome, 0, _floor_tex.size() - 1)]
-	draw_texture_rect(tex, rect, true)   # tile=true repeats the 32x32 texture
+	var b := clampi(biome, 0, _floor_tex.size() - 1)
+	var tex: Texture2D = _floor_tex[b]
+	draw_texture_rect(tex, rect, true)   # tile=true repeats the 64x64 patchwork
+	# Soft ambient-occlusion band along the inner edges grounds the plateau.
+	draw_rect(Rect2(rect.position, Vector2(rect.size.x, AO_PX)), AO_COLOR, true)
+	draw_rect(Rect2(Vector2(rect.position.x, rect.end.y - AO_PX), Vector2(rect.size.x, AO_PX)), AO_COLOR, true)
+	draw_rect(Rect2(Vector2(rect.position.x, rect.position.y + AO_PX), Vector2(AO_PX, rect.size.y - 2.0 * AO_PX)), AO_COLOR, true)
+	draw_rect(Rect2(Vector2(rect.end.x - AO_PX, rect.position.y + AO_PX), Vector2(AO_PX, rect.size.y - 2.0 * AO_PX)), AO_COLOR, true)
 	# A thin lighter lip along the top edge so the plateau reads against the sky.
 	draw_rect(Rect2(rect.position, Vector2(rect.size.x, 2.0)), EDGE_COLOR, true)
+	# Grass-overhang fringe along the bottom edge: the strip's top 4 rows overlap the
+	# floor seamlessly, the ragged blades hang over the cliff rim below.
+	var edge: Texture2D = _edge_tex[b]
+	draw_texture_rect(edge, Rect2(Vector2(rect.position.x, rect.end.y - 4.0), Vector2(rect.size.x, float(TS))), true)
 
 ## A bridge deck: wooden planks tiled across the span (tinted toward the parent biome)
 ## with rope rails + worn edges along the two long sides. Orientation from the aspect.

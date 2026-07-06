@@ -33,13 +33,13 @@ shared/     deterministic sim, imported by BOTH ends — the netcode contract
   sim/      world_sim · entity_state · input_command · movement · entity_defs (per-kind radius/max-hp/roles + NPC tier hp tables) · faction_defs (faction ids + 2-bit pair relations + hostility rules) · teleport_defs (waypoint-travel tuning/wire codes + the shared destination rules) · world_geometry · world_generator (seeded procgen: corner faction starts, center-out danger tiers, orb tiers + shortcut-bridge caches)
   combat/   ability (one phase machine, per-slot cooldowns) · ability_defs (5 base skills + 5-ability boss pool + 2 merchant-unlockables + tick tuning) · upgrade_defs (gem economy: u16 upgrades packing, item catalogue/costs, scaled damage/heal/cd helpers) · boss_defs (kits/phases/patterns/policy) · hitbox_resolver (cone + radius)
   net/      serialization · snapshot · appearance (u16 character-look spec: class/hair/skin, server-sanitized)
-client/     client_world (predict/reconcile/interp) · local_player · prediction_buffer · interpolation_buffer · char_painter (runtime sheet baker) · char_sprite_frames (per-look cache) · char_anim · boss_palette (kit colors) · faction_palette (faction names/colors)
+client/     client_world (predict/reconcile/interp + day/night tint driver) · local_player · prediction_buffer · interpolation_buffer · char_painter (runtime sheet baker — THE sheet-contract authority: 24x32 frames, 12 cols) · char_sprite_frames (per-look cache + species/boss sheets) · char_anim · monster_skins (biome→species pick) · palette_util (hue-shifted color ramps for ALL baked art) · boss_palette (kit colors) · faction_palette (faction names/colors) · effect_spawner (data-driven FX registry + shared frame caches) · ui_palette/ui_theme (runtime pixel-font Theme)
 server/     server_world (LOBBY MANAGER) · lobby (one authoritative world each) · input_queue · ai_controller · boss_ai (kit/phase pattern driver) · server_player
-entities/   player/monster/projectile/hazard scenes — VISUAL SHELLS only (apply_state)
-scenes/     bootstrap (main) · main_menu · character_creator · lobby_browser · server_root · client_root
-world/      test_map (renders a WorldGeometry) · floor_renderer (tiling biome floors + floating-island undersides w/ reverse-pyramid stones) · water_renderer + water_layer (animated ponds/waterfalls) · foliage + foliage_layer (swaying trees/grass/rocks) · sky (day/night shader) · biome_registry · map_markers (villages/merchant stalls/waypoint obelisks/tier-tinted orbs/cache glints/shrine monoliths/boss banners + taken-pickup state)
-ui/         hud (+toasts, gems readout) · hotbar (7-slot skill bar, keys 1-7, slots 6-7 padlocked until bought) · boss_bar (raid frame) · diplomacy_panel (faction relations, key P) · shop_panel (merchant shop, key E near a stall) · waypoint_panel (travel, key T near a waypoint) · cast_bar (teleport channel) · net_debug (F3 overlay) · main_menu · character_creator · lobby_browser
-tools/      latency_sim · art_baker/gen_art · test_worldgen (procgen determinism test) · test_skills (skill-sim determinism test) · test_boss_sim (server-side raid-loop test)
+entities/   player/monster/projectile/hazard scenes — VISUAL SHELLS only (apply_state); effects/sheet_effect (the one generic one-shot FX node)
+scenes/     bootstrap (main) · main_menu · character_creator · lobby_browser · server_root · client_root (WorldTint CanvasModulate + y-sorted Playfield holding Trees+Entities)
+world/      test_map (renders a WorldGeometry) · floor_renderer (tiling biome floors: 4-variant patchwork + edge fringe + AO + floating-island undersides w/ reverse-pyramid stones) · water_renderer + water_layer (animated ponds w/ soft banks + waterfalls) · foliage + foliage_layer (swaying grass batch + per-instance y-sortable tree sprites + rock/decal batch) · glow_layer (additive night-scaled glows: orbs/runes/shrines/banners/lava/windows) · sky (day/night shader) · biome_registry · map_markers (villages/merchant stalls/waypoint obelisks/tier-tinted orbs/cache glints/shrine monoliths/boss banners + taken-pickup state)
+ui/         hud (+toasts, gems readout) · hotbar (7-slot skill bar w/ baked icons, keys 1-7, slots 6-7 padlocked until bought) · boss_bar (kit-colored raid frame w/ 66%/33% phase ticks) · diplomacy_panel (faction relations, key P) · shop_panel (merchant shop, key E near a stall) · waypoint_panel (travel, key T near a waypoint) · cast_bar (teleport channel) · net_debug (F3 overlay) · main_menu · character_creator · lobby_browser
+tools/      latency_sim · art_baker/gen_art · art_preview (--preview screenshot scene) · test_worldgen (procgen determinism test) · test_skills (skill-sim determinism test) · test_boss_sim (server-side raid-loop test)
 ```
 
 The dedicated server hosts **many lobbies at once**; each `Lobby` runs its own
@@ -353,6 +353,12 @@ godot-4 --headless --path . -- --client --connect 127.0.0.1 --port 24565 --auto-
 # count of an --auto-create'd lobby (an out-of-range pick, e.g. --faction 4 into a
 # 2-faction lobby, exercises the server's least-populated auto-assign — check the
 # server's "faction=N" spawn log line).
+# --shot SECONDS (CLIENT flag, windowed only): N seconds after entering the game,
+# save a 4-frame burst of viewport captures to res://shot*.png and quit — THE
+# visual-verification loop (gitignored; snap godot can only write under $HOME).
+# --tod 0..1 (CLIENT flag): force the DISPLAYED time of day (sky + world tint +
+# glow layer; 0 dawn / .25 noon / .5 dusk / .75 midnight) — cosmetic only, for
+# eyeballing the day/night pass without waiting out the 12-minute cycle.
 
 # regenerate placeholder art (e.g. after changing biomes); determinism tests
 # (procgen incl. corner faction islands, danger-tier law, center-out bosses,
@@ -415,28 +421,72 @@ islands — that is the risk/reward trade. Death does NOT reset the cooldown.
 
 ---
 
-## Art pipeline (Golden-Sun style) — for when sprites replace the placeholders
+## Art pipeline (Golden-Sun style) — ALL art is code-baked, deterministic, in-repo
 - Pixel art: import with **Nearest** filter
   (`rendering/textures/canvas_textures/default_texture_filter=0`), no mipmaps,
-  integer scaling.
-- Top-down 3/4-perspective sheets; 4- or 8-direction facing keyed off
-  `EntityState.facing`. Replace the procedural `_draw()` in `entities/entity.gd`.
+  integer scaling. The in-game camera runs at **zoom 2x** (client_root.tscn).
+- **Color ramps**: every baked palette derives from a base color via
+  `client/palette_util.gd` (5-tone hue-shifted ramps: shadows cool, highlights
+  warm). PaletteUtil sits in the `--script` tools compile graph — preload-only,
+  no autoload refs (same rule as `char_painter.gd`).
+- **Character sheets**: 288x96, frame **24x32**, rows DOWN/UP/SIDE (left = flip_h),
+  cols idle(0-1) walk(2-7, 6-frame gait) attack(8-11). The contract lives ONCE in
+  `client/char_painter.gd` (FRAME_W/H, COLS, *_COLS tables, *_FPS) — ArtBaker,
+  CharAnim and CharSpriteFrames alias it; change it there and re-bake. Players are
+  runtime-baked per Appearance; `Appearance.DEFAULT` must reproduce the committed
+  `player.png` byte-identically. Monsters come as 3 species sheets
+  (slime/beetle/wisp) picked client-side from the island biome
+  (`client/monster_skins.gd` — cosmetic only). Bosses are bespoke 640x128 sheets
+  (frame 64x64, 10 cols x 2 rows: FRONT serves down+up, SIDE flips), one per kit,
+  selected by the appearance/kit field; sprite offset -20, no node scale.
+- **FX**: every combat effect is a baked strip (`fx_*.png`) played by the one
+  generic `entities/effects/sheet_effect.tscn`; `client/effect_spawner.gd` holds
+  the data-driven registry (frames/tint/scale/additive/rotate per EffectIds id)
+  and prebuilds ALL SpriteFrames + the shared additive material in `_ready` (the
+  4.7 native-.new()-in-RPC-frame rule). One neutral white `fx_ring.png` serves
+  slam/smash/nova via tint + node scale = sim radius. Projectiles/hazards are
+  animated shells that only ASSIGN the caches (`EffectSpawner.bolt_frames` /
+  `hazard_frames` / `glow_tex`). Entities hit-flash on hp decrease (modulate).
 - The map is drawn as TILING textured rects (islands are millions of cells — far too
   many for a `TileMapLayer`), not per-cell tiles, and must keep matching `WorldGeometry`
   (the sim collides against the walkable union, not the picture). `floor_renderer.gd`
-  tiles the biome floor across each island rect + draws the floating-island underside
-  (layered drop shadow + a rocky rim and a reverse-pyramid stone mass hanging below,
-  using the atlas **cliff** column); bridges get a wood-plank deck with rope rails.
-  `water_renderer.gd` (+ `water_layer.gd`, `water.gdshader`) adds animated on-island
-  ponds + waterfalls off island edges; `foliage.gd` (+ `foliage_layer.gd`,
-  `foliage_sway.gdshader`) scatters swaying trees/grass/rocks. Water/foliage placement
-  is client-side, derived from the lobby seed, and never touches the sim. `map_markers.gd`
-  draws village huts + resource orbs. Islands float in the procedural `sky.gdshader`
-  (no water backdrop). All of these animate via a phase uniform fed from the synced
-  `GameClock` in `client_world` (`_update_sky`/`_update_env`) — never the shader `TIME`.
-- Terrain atlas (`assets/tiles/terrain.png`, baked by `tools/art_baker.gd`): 3 cols
-  (floor/floor_alt/**cliff**) × `BiomeRegistry.BIOME_COUNT` rows (currently 6:
-  forest/desert/snow/swamp/volcano/savanna). Add a biome = new palette row + bump
-  `BIOME_COUNT`, then re-run `gen_art.gd`. The baker also emits `bridge.png` (one wood
-  plank tile, tinted per biome) and `foliage.png` (6 cells: tree x3 / grass / rock x2).
-- Assets in `assets/sprites|tiles|fonts`; commit `.import` files.
+  composes a 64x64 patchwork from 4 floor variants (fixed FLOOR_MIX — no visible
+  checker), tiles it per island, adds an inner AO band, a grass-overhang fringe
+  strip along bottom edges (atlas col 5) and the floating-island underside
+  (layered drop shadow + rocky rim + sun-lit band + reverse-pyramid stone mass,
+  atlas **cliff** col 4); bridges get a wood-plank deck with rope rails.
+  `water_renderer.gd` (+ `water_layer.gd`, `water.gdshader`) adds animated ponds
+  (soft noise-faded banks) + waterfalls; `foliage.gd` scatters swaying grass
+  (batch), rocks + per-biome ground decals (batch), and TREES as individual
+  Sprite2Ds re-parented into client_root's y-sorted `Playfield` (with `Entities`)
+  so actors walk in front of/behind trunks — same seeded RNG streams, NEVER
+  reorder the `_scatter` calls. Water/foliage/glow placement is client-side,
+  derived from the lobby seed, and never touches the sim. Islands float in the
+  procedural `sky.gdshader` (no water backdrop). All of these animate via a phase
+  uniform fed from the synced `GameClock` in `client_world`
+  (`_update_sky`/`_update_env`) — never the shader `TIME`.
+- **Day/night**: one `CanvasModulate` (`WorldTint` in client_root) driven by
+  `client_world._update_sky` on the synced clock — 4-key cyclic blend, night
+  blue-shifts and never drops below ~0.5 luminance (combat readability).
+  Sky/HUD are separate CanvasLayers and stay untinted. `world/glow_layer.gd`
+  (additive quads at orbs/runes/shrines/banners/lava + night-only hut windows)
+  brightens as the tint darkens. No Light2D — glows + modulate only.
+- Terrain atlas (`assets/tiles/terrain.png`, baked by `tools/art_baker.gd`): 6 cols
+  (floor/floor_alt/floor_var2/floor_var3/**cliff**/**edge-fringe**) ×
+  `BiomeRegistry.BIOME_COUNT` rows (currently 6: forest/desert/snow/swamp/volcano/
+  savanna; palettes = PaletteUtil ramps + per-biome overrides). Add a biome = new
+  base color + bump `BIOME_COUNT`, then re-run `gen_art.gd`. The baker also emits
+  `bridge.png`, `foliage.png` (12 cells in 2 rows: tree x3/grass/rock x2 +
+  flower x2/pebbles/crack/stump/bush decals), `icons_skills.png` (24x24 cells BY
+  ABILITY ID for the hotbar) and the **pixel font**.
+- **UI**: `assets/fonts/pixel.fnt` + `pixel.png` are BAKED (classic 5x7 glyphs in
+  6x9 cells, ASCII 32-126; BMFont channel spec must be `alphaChnl=0 redChnl=4
+  greenChnl=4 blueChnl=4` or Godot's importer rejects it; if the importer ever
+  wedges with `valid=false`, delete `pixel.fnt.import` and re-import).
+  `client/ui_theme.gd` builds the runtime Theme (pixel font at size 18 = crisp 2x,
+  `FIXED_SIZE_SCALE_INTEGER_ONLY`, UiPalette styleboxes) — applied in
+  main_menu/lobby_browser/character_creator `_ready` and `UiTheme.apply(hud)`;
+  `gui/theme/custom_font` covers stragglers. Use font sizes 9/18 only.
+- Assets in `assets/sprites|tiles|fonts`; commit `.import` files. Preview any art
+  change with `--preview` (tools/art_preview.gd: world + characters + species +
+  bosses + FX sheets) or in-game with `--shot`/`--tod`.

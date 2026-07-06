@@ -49,3 +49,8 @@ Rework map and map content to fit next game design points:
 - Add TP between villages/merchants ? So players don't have to walk all the time, but it should be limited to avoid abuse (5 minutes cooldown, 10 seconds to cast ?).
 - Think about game design, what can be improve to make the game feel more professional and fun to play.
 
+# [GRAPHISM] Overhaul the game graphics to create a more immersive and visually appealing experience for players
+
+Currently graphism are too basic.
+Pixel art is ok but it needs to be beautiful and vibrant.
+Other solutions are ok but they need to stay beautiful and vibrant, and easily readable for players.

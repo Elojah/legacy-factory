@@ -36,14 +36,24 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("5")
 
+[node name="WorldTint" type="CanvasModulate" parent="."]
+
 [node name="World" type="Node2D" parent="."]
 
-[node name="Entities" type="Node2D" parent="."]
+[node name="Playfield" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="Trees" type="Node2D" parent="Playfield"]
+y_sort_enabled = true
+
+[node name="Entities" type="Node2D" parent="Playfield"]
+y_sort_enabled = true
 
 [node name="Effects" type="Node2D" parent="."]
 script = ExtResource("3")
 
 [node name="Camera2D" type="Camera2D" parent="."]
+zoom = Vector2(2, 2)
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("2")
@@ -85,10 +95,10 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -68.0
-offset_top = -34.0
-offset_right = 68.0
-offset_bottom = -10.0
+offset_left = -124.0
+offset_top = -46.0
+offset_right = 124.0
+offset_bottom = -14.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2

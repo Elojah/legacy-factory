@@ -57,9 +57,22 @@ const CLOUD_SCROLL_PER_TICK := 0.00012
 const WATER_FLOW_PER_TICK := 0.010    # waterfall/pond flow (fast — water moves)
 const WIND_SWAY_PER_TICK := 0.004     # foliage sway (slower, gentle breeze)
 
-@onready var _entities_root: Node2D = $Entities
+# Day/night world tint keys (CanvasModulate on the default canvas: world +
+# entities + effects; the Sky and HUD CanvasLayers are separate canvases and
+# stay untinted). Night blue-shifts and NEVER drops below ~0.5 luminance —
+# combat readability beats realism. Same cyclic 4-key blend as sky.gdshader.
+const TINT_DAWN := Color(1.04, 0.88, 0.78)
+const TINT_NOON := Color(1.0, 1.0, 1.0)
+const TINT_DUSK := Color(1.06, 0.82, 0.70)
+const TINT_NIGHT := Color(0.52, 0.58, 0.82)
+
+# Entities and tree sprites share one y-sorted Playfield so actors correctly
+# walk in front of / behind trees (nested y-sorted nodes flatten into one sort).
+@onready var _entities_root: Node2D = $Playfield/Entities
+@onready var _trees_root: Node2D = $Playfield/Trees
 @onready var _effects: EffectSpawner = $Effects
 @onready var _camera: Camera2D = $Camera2D
+@onready var _world_tint: CanvasModulate = $WorldTint
 @onready var _hud = $HUD  # untyped on purpose: calls hud.gd methods (set_hp/set_debug)
 @onready var _sky = $Sky/SkyRect  # procedural day/night sky (world/sky.gd)
 
@@ -84,11 +97,30 @@ func _ready() -> void:
 	_map = TEST_MAP.instantiate() as TestMap
 	$World.add_child(_map)
 	_map.render(_geometry)
+	# Trees live in the y-sorted Playfield (with the entities), not the flat map.
+	_map.set_tree_parent(_trees_root)
 	_camera.make_current()
+	# Dev hook (--shot N): save an in-game screenshot after N seconds, then quit.
+	if Session.auto_shot > 0.0:
+		_take_shot()
 	# Handlers are connected and the scene is live — now ask the server to spawn us.
 	# (This gate fixes the old race where assign_local_player could arrive before
 	# the client scene was listening.)
 	NetManager.client_ready_in_lobby(Session.appearance, Session.faction)
+
+## --shot dev hook: capture a short burst of viewport frames to res://shot*.png
+## (snap-confined godot can only write under $HOME, so not the scratchpad) and
+## quit. A burst beats a single frame for catching short-lived cast FX.
+func _take_shot() -> void:
+	await get_tree().create_timer(Session.auto_shot).timeout
+	for i in 4:
+		await RenderingServer.frame_post_draw
+		var img: Image = get_viewport().get_texture().get_image()
+		var path := "res://shot.png" if i == 0 else "res://shot%d.png" % i
+		var err: int = img.save_png(path)
+		print("[ClientWorld] --shot saved %s (err=%d)" % [path, err])
+		await get_tree().create_timer(0.3).timeout
+	get_tree().quit()
 
 # --- fixed tick: capture input, predict, send -------------------------------
 func _physics_process(_delta: float) -> void:
@@ -170,7 +202,23 @@ func _update_sky() -> void:
 		var t := GameClock.get_estimated_server_tick()
 		tod = fmod(t, float(NetConfig.DAY_LENGTH_TICKS)) / float(NetConfig.DAY_LENGTH_TICKS)
 		phase = fmod(t * CLOUD_SCROLL_PER_TICK, 1.0)
+	if Session.debug_tod >= 0.0:
+		tod = fmod(Session.debug_tod, 1.0)  # --tod dev override (cosmetic only)
 	_sky.set_params(tod, phase, _camera.global_position, get_viewport().get_visible_rect().size)
+	# World tint: cyclic 4-key blend (weights sum to 1 — see sky.gdshader wphase).
+	var tint: Color = TINT_DAWN * _wphase(tod, 0.0) + TINT_NOON * _wphase(tod, 0.25) \
+		+ TINT_DUSK * _wphase(tod, 0.5) + TINT_NIGHT * _wphase(tod, 0.75)
+	tint.a = 1.0
+	_world_tint.color = tint
+	# Night factor (0 = noon, 1 = midnight) brightens the glow layer as the
+	# tint darkens the world.
+	if _map != null:
+		_map.set_night(1.0 - clampf(sin(tod * TAU) * 0.5 + 0.5, 0.0, 1.0))
+
+## Cyclic triangular weight, 1 at center `c`, 0 a quarter-day away (wraps).
+func _wphase(t: float, c: float) -> float:
+	var d := absf(fposmod(t - c + 0.5, 1.0) - 0.5)
+	return maxf(0.0, 1.0 - d * 4.0)
 
 # --- animated water + foliage ------------------------------------------------
 ## Drive water flow + foliage wind from the SYNCHRONIZED clock (same source as the
@@ -516,6 +564,6 @@ func _update_boss_bar() -> void:
 					boss = n
 	if boss != null:
 		# Tiered max (danger tier rides upgrades): outer bosses show a smaller pool.
-		_hud.set_boss_bar(BossDefs.kit_name(boss.state.appearance), boss.state.hp, EntityDefs.max_hp_of(boss.state))
+		_hud.set_boss_bar(BossDefs.kit_name(boss.state.appearance), boss.state.hp, EntityDefs.max_hp_of(boss.state), boss.state.appearance)
 	else:
 		_hud.hide_boss_bar()

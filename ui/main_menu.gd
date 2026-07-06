@@ -9,6 +9,7 @@ extends Control
 var _settings_layer: CenterContainer = null  # built lazily on first open
 
 func _ready() -> void:
+	theme = UiTheme.get_theme()
 	# Prewarm the native RNG type and reset any prior session (returning from a
 	# game). clear() keeps Session.appearance — the character survives lobbies.
 	Session.warm()
